@@ -16,9 +16,11 @@ divergence(X,Y,Zx,Zy,Iter) ->
 
     if
 	Module > 2.0 ->
-	    {0,0};
+	    5*Iter;
+	Iter =< 0, Module =< 2.0 ->
+	    4*Iter;
 	Iter =< 0 ->
-	    {Zx,Zy};
+	    5*Iter;
 	true ->
 	    {Sx,Sy} = square(Zx,Zy),
 	    {Rx, Ry}= {Sx+X, Sy+Y},
@@ -38,20 +40,20 @@ int_bytes_ascii(N) ->
 
 mandelbrot(Step, Iters) ->
     receive
-	{Origin, P0, Pf, Idx} ->
+	{Origin, P0, Pf, Idx, Rounding} ->
 	    
 	    { {X0,Y0}, {Xf,Yf} } = {P0, Pf},
 
 	    {Width,Height} = { trunc(abs(Xf-X0) / Step),
-			       trunc(abs(Yf-Y0) / Step) },
+			       trunc(abs(Yf+Rounding*Step-Y0) / Step) },
 
 	    io:format("Width:~p\tHeight:~p\n", [Width, Height]),
 
-	    Coords = [{X,Y} || Y <- range(Y0, Yf, Step),
-			       X <- range(X0, Xf, Step)],
+	    Coords = [{X,Y} || Y <- range(Y0, Yf+Step*Rounding, Step),
+			       X <- range(X0, Xf+Rounding*Step, Step)],
 
 	    Res = lists:map( fun({X,Y}) ->
-				     round(127*modulo(divergence(X,Y,0,0,Iters))) end,
+				     divergence(X,Y,0,0,Iters) end,
 			     Coords),
 
 
@@ -75,41 +77,48 @@ start(Step, Cores) ->
     HeightIntervals = intervals(4, Cores),
 
     Unit = lists:nth(2,HeightIntervals) - lists:nth(1, HeightIntervals),
-    {Width, Height} = {trunc((length(HeightIntervals)-1)*(Unit/Step)),
-		       trunc((length(HeightIntervals)-1)*(Unit/Step))},
+    TrueHeight  = trunc(Cores * (Unit/Step)),
+    RoundHeight = trunc(Cores * trunc(Unit/Step)),
+    RoundingError = TrueHeight - RoundHeight,
 
+    ToAdd = [0 || _ <- lists:seq(1,Cores - 1)] ++ [RoundingError],
+    
+    io:format("~p\n", [ToAdd]),
+    io:format("Exected Height: ~p\n", [TrueHeight]),
 
-    Pids = [{Idx, spawn(mandel, mandelbrot, [Step, 10])} || Idx <- lists:seq(1,Cores)],
+    Pids = [{Idx, spawn(mandel, mandelbrot, [Step, 50])} || Idx <- lists:seq(1,Cores)],
     
     lists:foreach(fun({Idx,Pid}) ->
-			  Pid !
-			      { self(),
-				{-2, lists:nth(Idx, HeightIntervals)-2},
-				{2, lists:nth(Idx+1, HeightIntervals)-2}, %-step?
-				Idx
-			      } end,
-		  Pids),
+    			  Pid !
+    			      { self(),
+    				{-2, lists:nth(Idx, HeightIntervals)-2},
+    				{2, lists:nth(Idx+1, HeightIntervals)-2}, %-step?
+    				Idx,
+				lists:nth(Idx, ToAdd)
+    			      } end,
+    		  Pids),
     
     Results = [
-	       receive
-		   Tupla ->
-		       Tupla
-	       end || _ <- Pids],
+    	       receive
+    		   Tupla ->
+    		       Tupla
+    	       end || _ <- Pids],
 
     %% io:format("~p\n", [Results]),
     
     Out = binary:list_to_bin(
-	    lists:map(fun({_,B})->B end, 
-		      lists:sort(fun({Idx1,_}, {Idx2,_}) ->
-					 Idx1 < Idx2 end,
-				 Results))),
-			  
+    	    lists:map(fun({_,B})->B end, 
+    		      lists:sort(fun({Idx1,_}, {Idx2,_}) ->
+    					 Idx1 < Idx2 end,
+    				 Results))),
+			 
+ 
     Header = ["P5\n",
-	      int_bytes_ascii(Width),
-	      " ",
-	      int_bytes_ascii(Height),
-	      " 255\n"
-	     ],
+    	      int_bytes_ascii(TrueHeight), %% Width
+    	      " ",
+    	      int_bytes_ascii(TrueHeight),
+    	      " 255\n"
+    	     ],
 
     {ok, Fd} = file:open("out.pgm", [raw, write, binary]),
     file:write(Fd, Header),
