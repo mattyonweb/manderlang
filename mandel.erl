@@ -18,7 +18,7 @@ divergence(X,Y,Zx,Zy,Iter) ->
 	Module > 2.0 ->
 	    5*Iter;
 	Iter =< 0, Module =< 2.0 ->
-	    4*Iter;
+	    0;
 	Iter =< 0 ->
 	    5*Iter;
 	true ->
@@ -40,27 +40,23 @@ int_bytes_ascii(N) ->
 
 mandelbrot(Step, Iters) ->
     receive
-	{Origin, P0, Pf, Idx, Rounding} ->
+	{Origin, P0, Pf, Idx} ->
 	    
 	    { {X0,Y0}, {Xf,Yf} } = {P0, Pf},
 
+	    %% Non necessari per nessun calcolo, solo da mostrare
 	    {Width,Height} = { trunc(abs(Xf-X0) / Step),
-			       trunc(abs(Yf+Rounding*Step-Y0) / Step) },
-
+			       trunc(abs(Yf-Y0) / Step) },
 	    io:format("Width:~p\tHeight:~p\n", [Width, Height]),
 
-	    Coords = [{X,Y} || Y <- range(Y0, Yf+Step*Rounding, Step),
-			       X <- range(X0, Xf+Rounding*Step, Step)],
+	    Coords = [{X,Y} || Y <- range(Y0, Yf, Step),
+			       X <- range(X0, Xf, Step)],
 
 	    Res = lists:map( fun({X,Y}) ->
 				     divergence(X,Y,0,0,Iters) end,
 			     Coords),
 
-
-	    io:format("~p\n", [lists:max(Res)]),
-
 	    Contents = binary:list_to_bin(Res),
-
 	    Origin ! {Idx, Contents},
 
 	    mandelbrot(Step, Iters)
@@ -69,22 +65,15 @@ mandelbrot(Step, Iters) ->
 intervals(Interval, Num) ->
     Unit = Interval / float(Num),
     
-    lists:map(fun(X) ->
-		      Unit * X end,
-	      lists:seq(0,Num)).
+    { 
+      Unit, 
+      lists:map(fun(X) ->
+			Unit * X end,
+		lists:seq(0,Num))
+    }.
 		      
 start(Step, Cores) ->
-    HeightIntervals = intervals(4, Cores),
-
-    Unit = lists:nth(2,HeightIntervals) - lists:nth(1, HeightIntervals),
-    TrueHeight  = trunc(Cores * (Unit/Step)),
-    RoundHeight = trunc(Cores * trunc(Unit/Step)),
-    RoundingError = TrueHeight - RoundHeight,
-
-    ToAdd = [0 || _ <- lists:seq(1,Cores - 1)] ++ [RoundingError],
-    
-    io:format("~p\n", [ToAdd]),
-    io:format("Exected Height: ~p\n", [TrueHeight]),
+    {Unit, HeightIntervals} = intervals(4, Cores),
 
     Pids = [{Idx, spawn(mandel, mandelbrot, [Step, 50])} || Idx <- lists:seq(1,Cores)],
     
@@ -93,8 +82,7 @@ start(Step, Cores) ->
     			      { self(),
     				{-2, lists:nth(Idx, HeightIntervals)-2},
     				{2, lists:nth(Idx+1, HeightIntervals)-2}, %-step?
-    				Idx,
-				lists:nth(Idx, ToAdd)
+    				Idx
     			      } end,
     		  Pids),
     
