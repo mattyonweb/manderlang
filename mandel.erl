@@ -55,6 +55,7 @@ int_bytes_ascii(N) ->
 mandelbrot(Step, Iters) ->
     receive
 	{Origin, P0, Pf, Idx} ->
+
 	    %% Unpacking StartingPoint and FinalPoint
 	    { {X0,Y0}, {Xf,Yf} } = {P0, Pf},
 
@@ -75,15 +76,16 @@ mandelbrot(Step, Iters) ->
 	    Origin ! {Idx, binary:list_to_bin(Result)},
 
 	    mandelbrot(Step, Iters)
-
     end.
-		      
+		   
+   
 start(Dimension, Cores) ->
     HeightIntervals = intervals(4, Cores),
     
     %% Distance beetween a pixel to another (in complex plane)
     Step = 4.0 / Dimension,
     io:format("Step: ~p\n", [Step]),
+
 
     %% List of {OrderIdx, Pid}
     Pids = [{Idx, spawn(mandel, mandelbrot, [Step, 25])} || Idx <- lists:seq(1,Cores)],
@@ -97,6 +99,7 @@ start(Dimension, Cores) ->
 				Idx
 			      } end,
       Pids),
+
     
     %% List of {OrderIdx, BinaryValues}
     Results = 
