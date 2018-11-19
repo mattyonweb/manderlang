@@ -1,55 +1,7 @@
 -module(mandel).
+-import(utils, [range/3, intervals/2, int_bytes_ascii/1]).
+-import(complex, [divergence/5]).
 -compile(export_all).
-
-modulo({X,Y}) ->
-    math:sqrt(math:pow(X,2) + math:pow(Y,2)).
-
-square(X,Y) ->
-    {
-     math:pow(X,2) - math:pow(Y,2), 
-     2*X*Y
-    }.
-
-divergence(X,Y,Zx,Zy,Iter) ->
-    Module = modulo({Zx,Zy}),
-
-    if
-	Module > 2.0 ->
-	    10*Iter;
-	Iter =< 0, Module =< 2.0 ->
-	    0;
-	Iter =< 0 ->
-	    8*Iter;
-	true ->
-	    {Sx,Sy} = square(Zx,Zy),
-	    {Rx, Ry}= {Sx+X, Sy+Y},
-	    divergence(X,Y,Rx,Ry,Iter-1)
-    end.
-
-
-%%%%%%%%%%
-
-range(A,B,Step) ->
-    if
-	A >= B ->
-	    [];
-	true ->
-	    [A | range(A+Step, B, Step)]
-    end.
-
-
-intervals(Interval, Num) ->
-    %% Same as range(0,Interval,Interval/Num), but with the last element included
-    Unit = Interval / float(Num),
-    
-    lists:map(fun(X) ->
-		      Unit * X end,
-	      lists:seq(0,Num)).
-
-int_bytes_ascii(N) ->
-    binary:list_to_bin(integer_to_list(N)).
-
-%%%%%%%%%%
 
 
 mandelbrot(Step, Iters) ->
@@ -65,10 +17,10 @@ mandelbrot(Step, Iters) ->
 	    io:format("Width:~p\tHeight:~p\n", [Width, Height]),
 
 	    %% Generate the complex coordinates 
-	    Coords = [{X,Y} || Y <- range(Y0, Yf, Step),
-			       X <- range(X0, Xf, Step)],
+	    Coords = [{X,Y} || Y <- utils:range(Y0, Yf, Step),
+			       X <- utils:range(X0, Xf, Step)],
 
-	    Result = lists:map(fun({X, Y}) -> divergence(X, Y, 0, 0, Iters) end,
+	    Result = lists:map(fun({X, Y}) -> complex:divergence(X, Y, 0, 0, Iters) end,
 			    Coords),
 
 	    %% Send the bytes calculated to root
@@ -80,7 +32,7 @@ mandelbrot(Step, Iters) ->
 		   
    
 start(Dimension, Cores) ->
-    HeightIntervals = intervals(4, Cores),
+    Intervals = utils:intervals(4, Cores),
     
     %% Distance beetween a pixel to another (in complex plane)
     Step = 4.0 / Dimension,
@@ -94,8 +46,8 @@ start(Dimension, Cores) ->
     lists:foreach(
       fun({Idx,Pid}) -> Pid ! { 
 				self(),
-				{-2, lists:nth(Idx, HeightIntervals)-2},
-				{2, lists:nth(Idx+1, HeightIntervals)-2}, %-step?
+				{-2, lists:nth(Idx, Intervals)-2},
+				{2, lists:nth(Idx+1, Intervals)-2}, %-step?
 				Idx
 			      } end,
       Pids),
@@ -118,9 +70,9 @@ start(Dimension, Cores) ->
 			 
  
     Header = ["P5\n",
-    	      int_bytes_ascii(Dimension), %% Width
+    	      utils:int_bytes_ascii(Dimension), %% Width
     	      " ",
-    	      int_bytes_ascii(Dimension),
+    	      utils:int_bytes_ascii(Dimension),
     	      " 255\n"
     	     ],
 
